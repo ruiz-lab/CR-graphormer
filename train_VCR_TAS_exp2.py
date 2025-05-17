@@ -92,6 +92,18 @@ for split_seed in range(20):
             graph = dgl.to_networkx(graph).to_undirected()
             k = int(sum(dict(graph.degree()).values()) / len(graph.nodes()))
             filename_adjacency_search = os.path.dirname(os.path.dirname(os.getcwd()))+'/saved_adjacency_search_p'+str(args.p)+'/'+args.dataset+'_tas.pkl'
+            if os.path.exists(filename_adjacency_search):
+                try:
+                    with open(filename_adjacency_search, 'rb') as f:
+                        AS_object = pickle.load(f)
+                except:
+                    AS_object = TAS(graph,num_start_nodes=k,l=2*k,p=args.p,num_permutations=args.num_permutations,threshold=args.threshold)
+                    with open(filename_adjacency_search, 'wb') as f:
+                        pickle.dump(AS_object, f)
+            else:
+                AS_object = TAS(graph,num_start_nodes=k,l=2*k,p=args.p,num_permutations=args.num_permutations,threshold=args.threshold)
+                with open(filename_adjacency_search, 'wb') as f:
+                    pickle.dump(AS_object, f)
             copy_to = 'saved_adjacency_search_p'+str(args.p)+'/'+args.dataset+'_tas.pkl'
             if os.path.exists(copy_to):
                 try:
