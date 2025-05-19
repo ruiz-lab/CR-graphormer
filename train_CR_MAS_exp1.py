@@ -27,14 +27,12 @@ def parse_args():
     parser.add_argument('--device', type=int, default=1, help='Device cuda ID.')
     parser.add_argument('--seed', type=int, default=0, help='Random seed.')
     parser.add_argument('--adj_renorm', default=False, help='Whether needs to normalize input adjacency.')
-    parser.add_argument('--num_structure_supernodes', type=int, default=20, help='Number of supernodes going to be added to the input graph.')
     # parser.add_argument('--l', type=int, default=10, help='Maximum length of walks.')
     parser.add_argument('--p', type=float, default=1, help='Lazy activation parameter.')
     parser.add_argument('--num_permutations', type=int, default=5, help='Number of permutations.')
     parser.add_argument('--frequency_normalization', type=int, default=5, help='Frequency normalization function.')
     
     # Model parameters.
-    parser.add_argument('--hops', type=int, default=5, help='Hops of neighbors to be calculated.')
     parser.add_argument('--num_structure_tokens', type=int, default=10, help='Number of structure-aware virtually connected neighbors.')
     parser.add_argument('--num_content_tokens', type=int, default=10, help='Number of content-aware virtually connected neighbors.')
     parser.add_argument('--hidden_dim', type=int, default=512, help='Hidden layer size.')
@@ -133,7 +131,7 @@ for split_seed in range(20):
                 except:
                     raise ValueError("Trouble loading the source file or the source file does not exist.")
             auxiliary_graph = get_auxiliary_graph(AS_object, k)
-            raw_adj_sp, original_adj, features, cluster_dict = get_VCR_data(auxiliary_graph, features, args.num_structure_supernodes, normalize=args.adj_renorm)
+            raw_adj_sp, original_adj, features = get_VCR_data(auxiliary_graph, features, normalize=args.adj_renorm)
             unique_values, _ = torch.unique(labels, sorted=True, return_inverse=True)
             if -1 in unique_values: 
                 num_labels = unique_values.shape[0]-1
@@ -272,3 +270,5 @@ for split_seed in range(20):
 
             with open(filename, 'wb') as f:
                 pickle.dump(dictionary, f)
+    
+
