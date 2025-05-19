@@ -129,20 +129,13 @@ def laplacian_positional_encoding(g, pos_enc_dim):
     lap_pos_enc = torch.from_numpy(EigVec[:,1:pos_enc_dim+1]).float() 
     return lap_pos_enc
 
-def get_VCR_data(graph, features, num_supernodes, normalize=False):
+def get_VCR_data(graph, features, normalize=False):
     adj = graph.adj()
     # adj from sparse tensor to sparse matrix.
     raw_adj_sp = sp.coo_matrix((adj.coalesce().val, (adj.coalesce().indices()[0], adj.coalesce().indices()[1])), shape=adj.shape)
     graph = dgl.to_bidirected(graph)
-    clusters_dict = dgl.metis_partition(g=graph,
-                                        k=num_supernodes,
-                                        extra_cached_hops=0,
-                                        reshuffle=False,
-                                        balance_ntypes=None,
-                                        balance_edges=False,
-                                        mode='k-way')
     features = features.double()
-    return raw_adj_sp, adj, features, clusters_dict
+    return raw_adj_sp, adj, features
 
 def load_ogb_dataset(name, train_size=0.5, val_size=0.25, split_seed=0):
     ogb_dataset = NodePropPredDataset(name="ogbn-"+name)
