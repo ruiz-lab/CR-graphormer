@@ -36,6 +36,3 @@ python train_CR_TAS_exp1.py --dataset chameleon 3 --peak_lr 0.01 --device 1 --sa
 - `train_CR_TAS_exp1.py`: Training script for the CR-Absolute model.
 
 Please refer to these files for more detailed information on the model configurations and additional input arguments.
-
-## Contact
-For any questions or feedback, please contact mle19@jh.edu.
