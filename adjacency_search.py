@@ -60,6 +60,7 @@ class MAS:
     def MAS_inner(self, nodes):
         count_dict = {}
         activated = set(nodes)
+        num_inserted = 0
         for v in nodes:
             for n in list(nx.all_neighbors(self.g, v)):
                 if n not in activated:
@@ -68,10 +69,11 @@ class MAS:
                     count_dict[n] += 1
         if len(count_dict) == 0:
             return nodes
-        while len(count_dict)>0 and len(activated)<self.l:
+        while len(count_dict)>0 and num_inserted<self.l:
             selected = max(count_dict, key=count_dict.get)
             del count_dict[selected]
             activated.add(selected)
+            num_inserted += 1
             for n in list(nx.all_neighbors(self.g, selected)):
                 if n not in activated:
                     if n not in count_dict:
