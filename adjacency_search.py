@@ -1,16 +1,11 @@
-import scipy.sparse as sp
-import torch
-import dgl
 import numpy as np
 from tqdm import tqdm
 import random
 from typing import List, Union, Tuple
-import numba
 from scipy.sparse import csr_matrix, coo_matrix
 from torch_geometric.utils import coalesce
 import random
 import time
-import dgl
 import networkx as nx
 
 class MAS:
@@ -25,7 +20,7 @@ class MAS:
         self.p = p
         self.num_start_nodes = num_start_nodes
         self.num_permutations = num_permutations
-        self.num_nodes = len(self.g.nodes())
+        self.num_nodes = len(g.nodes())
         self.ordered_neighbors = {v: None for v in g.nodes()}
         self.runtime = None
         self.run_MAS()
@@ -33,7 +28,7 @@ class MAS:
 
     def run_MAS(self):
         start_time = time.time()
-        progress_bar = tqdm(total=len(self.g.nodes()))
+        progress_bar = tqdm(total=self.num_nodes)
         for v in self.g.nodes():
             neighbours = list(nx.all_neighbors(self.g, v))
             len_n = len(neighbours)
@@ -98,7 +93,7 @@ class TAS:
         self.num_start_nodes = num_start_nodes
         self.num_permutations = num_permutations
         self.threshold = threshold
-        self.num_nodes = len(self.g.nodes())
+        self.num_nodes = len(g.nodes())
         self.ordered_neighbors = {v: None for v in g.nodes()}
         self.runtime = None
         self.run_TAS()
@@ -106,7 +101,7 @@ class TAS:
 
     def run_TAS(self):
         start_time = time.time()
-        progress_bar = tqdm(total=len(self.g.nodes()))
+        progress_bar = tqdm(total=self.num_nodes)
         for v in self.g.nodes():
             neighbours = list(nx.all_neighbors(self.g, v))
             len_n = len(neighbours)
@@ -132,7 +127,7 @@ class TAS:
         self.runtime = time.time() - start_time
 
     def TAS_inner(self, nodes, t):
-        T = [min(self.g.degree(u), t) if u not in nodes else 0 for u in range(len(self.g.nodes()))]
+        T = [min(self.g.degree(u), t) if u not in nodes else 0 for u in range(self.num_nodes)]
         I = nodes
         activated = set(nodes)
         num_inserted = 0
@@ -149,6 +144,53 @@ class TAS:
     
     def update_dictionary(self, dictionary):
         self.ordered_neighbors_temp = dictionary
+
+############
+
+class PPR:
+    def __init__(self,
+                 g,
+                 l=10,
+                 p = 1,
+                 num_permutations=5) -> None:
+        self.g = g
+        self.l = l
+        self.num_permutations = num_permutations
+        self.num_nodes = self.num_nodes
+        self.ordered_neighbors = {v: None for v in g.nodes()}
+        self.runtime = None
+        self.run_PPR()
+        self.ordered_neighbors_temp = self.ordered_neighbors.copy()
+
+    def run_PPR(self):
+        start_time = time.time()
+        progress_bar = tqdm(total=self.num_nodes)
+        for v in self.g.nodes():
+            counter = {i: 0 for i in range(self.num_nodes)}
+            for _ in range(self.num_permutations):
+                current = v
+                counter[current] += 1
+                for _step in range(self.l):
+                    neighbours = list(nx.all_neighbors(self.g, current))
+                    if len(neighbours) == 0:
+                        # dead-end: stop this walk early
+                        break
+                    random.shuffle(neighbours)
+                    current = random.choice(neighbours)
+                    counter[current] += 1
+            # Sort by count desc, then node ascending to make ties deterministic
+            items = list(counter.items())
+            random.shuffle(items)
+            counter = dict(items)
+            self.ordered_neighbors[v] = dict(sorted(counter.items(), key=lambda item: item[1], reverse=True))
+            progress_bar.update(1)
+        progress_bar.close()
+        self.runtime = time.time() - start_time
+
+    def update_dictionary(self, dictionary):
+        self.ordered_neighbors_temp = dictionary
+
+############
 
 def update_score2(AS_object):
     dictionary = {}
@@ -169,11 +211,12 @@ def update_score3(AS_object):
 def get_weights(AS_object,auxiliary_graph):
     edges = auxiliary_graph.edges()
     edges = list(zip(edges[0].tolist(), edges[1].tolist()))
-    edges = set([(u,v) if u<v else (v,u) for u,v in edges])
+    edges = set((min(u, v), max(u, v)) for u, v in edges)
     weights = {i: {} for i in range(AS_object.num_nodes)}
     for u,v in edges:
-        weights[u][v] = (AS_object.ordered_neighbors_temp[u][v] + AS_object.ordered_neighbors_temp[v][u]) / 2
-        weights[v][u] = weights[u][v]
+        w = (AS_object.ordered_neighbors_temp[u][v] + AS_object.ordered_neighbors_temp[v][u]) / 2
+        weights[u][v] = w
+        weights[v][u] = w
     for v in AS_object.g.nodes():
         weights[v] = dict(sorted(weights[v].items(), key=lambda item: item[1], reverse=True))
     return weights
@@ -196,4 +239,4 @@ def get_auxiliary_graph(AS_object, k):
         first_node = list(connected_components[random_numbers[0]])[first_index]
         second_node = list(connected_components[random_numbers[1]])[second_index]
         G_nx.add_edge(first_node, second_node)
-    return dgl.from_networkx(G_nx)
+    return G_nx

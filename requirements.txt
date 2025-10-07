@@ -1,0 +1,26 @@
+# Core libraries
+numpy
+scipy
+tqdm
+numba
+networkx
+pickle5
+
+# Deep learning frameworks
+torch
+torchvision
+torchaudio
+torch-geometric
+dgl
+ogb
+
+# Utilities
+argparse
+typing-extensions
+
+# Project-specific modules (if local)
+# data
+# model
+# lr
+# utils
+# adjacency_search

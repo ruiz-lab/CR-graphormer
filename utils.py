@@ -33,7 +33,7 @@ def re_features_NAG(adj, features, K):
         x = torch.matmul(adj, x)
     return nodes_features
 
-### VCR ###
+### CR ###
 
 def re_features_push_structure(raw_adj_sp, adj, features, hops, K, weights=None):
     nodes_features = torch.empty(features.shape[0], K+1+hops, features.shape[1]+1)
@@ -108,24 +108,9 @@ def re_features_push_structure(raw_adj_sp, adj, features, hops, K, weights=None)
         progress_bar.close()
     return nodes_features
 
-def re_features_push_content(original_adj, processed_features, features, K, num_labels, labelcluster_to_nodes, weights=None):
+def re_features_push_content(adj, processed_features, features, K, weights=None):
     # Adding supernodes to original adj and get adj.
-    num_nodes = original_adj.shape[0]
-    num_members_in_a_cluster = len(labelcluster_to_nodes[0])
-    padded_indices = torch.cat([torch.tensor([labelcluster_to_nodes[0].tolist(), [num_nodes]*num_members_in_a_cluster]),
-                                torch.tensor([[num_nodes]*num_members_in_a_cluster, labelcluster_to_nodes[0].tolist()])], dim=1)
-    padded_values = torch.cat([torch.ones(num_members_in_a_cluster), torch.ones(num_members_in_a_cluster)])
-    for i in range(1, num_labels):
-        num_members_in_a_cluster = len(labelcluster_to_nodes[i])
-        padded_indices = torch.cat([padded_indices,
-                                    torch.tensor([labelcluster_to_nodes[i].tolist(), [num_nodes+i]*num_members_in_a_cluster]),
-                                    torch.tensor([[num_nodes+i]*num_members_in_a_cluster, labelcluster_to_nodes[i].tolist()])
-                                    ], dim=1)
-        padded_values = torch.cat([padded_values, torch.ones(num_members_in_a_cluster), torch.ones(num_members_in_a_cluster)])
-    padded_indices = torch.cat([original_adj.coalesce().indices(), padded_indices], dim=1)
-    padded_values = torch.cat([original_adj.coalesce().val, padded_values])
-    adj = torch.sparse_coo_tensor(indices=padded_indices, values=padded_values, size=(num_nodes + num_labels, num_nodes + num_labels))
-    features = torch.nn.functional.pad(features.to_dense(), (0, 0, 0, num_labels), value=0)
+    num_nodes = adj.shape[0]
     nodes_features = torch.empty(num_nodes, K, processed_features.shape[2])
     if weights == None:
         # Run pagerank.

@@ -1,6 +1,6 @@
-from data import get_dataset, rand_train_test_idx, get_NAG_data
+from data import get_dataset, rand_train_test_idx, get_VCR_data
 import time
-import utils
+import utils_original as utils
 import random
 import argparse
 import numpy as np
@@ -14,7 +14,6 @@ import pickle
 import dgl
 from adjacency_search import get_auxiliary_graph
 
-# Training settings.
 def parse_args():
     '''
     Generate a parameters parser.
@@ -27,11 +26,14 @@ def parse_args():
     parser.add_argument('--save_to', type=str, default='results', help='Result folder.')
     parser.add_argument('--device', type=int, default=1, help='Device cuda ID.')
     parser.add_argument('--seed', type=int, default=0, help='Random seed.')
+    parser.add_argument('--adj_renorm', default=False, help='Whether needs to normalize input adjacency.')
+    parser.add_argument('--num_structure_supernodes', type=int, default=20, help='Number of supernodes going to be added to the input graph.')
     parser.add_argument('--merge', type=bool, default=False, help='Merge auxiliary graph with original graph.')
     parser.add_argument('--p', type=float, default=1.0, help='Lazy activation parameter.')
-
+    
     # Model parameters.
-    parser.add_argument('--pe_dim', type=int, default=3, help='Position embedding size.')
+    parser.add_argument('--num_structure_tokens', type=int, default=10, help='Number of structure-aware virtually connected neighbors.')
+    parser.add_argument('--num_content_tokens', type=int, default=10, help='Number of content-aware virtually connected neighbors.')
     parser.add_argument('--hidden_dim', type=int, default=512, help='Hidden layer size.')
     parser.add_argument('--n_layers', type=int, default=1, help='Number of transformer layers.')
     parser.add_argument('--n_heads', type=int, default=8, help='Number of transformer heads.')
@@ -56,7 +58,7 @@ def parse_args():
 args = parse_args()
 print(args)
 
-method = "NAG_mas"
+method = "VCR_tas"
 method = method.lower()
 
 for split_seed in range(20):
@@ -95,10 +97,10 @@ for split_seed in range(20):
             graph = dgl.to_networkx(graph).to_undirected()
             k = int(sum(dict(graph.degree()).values()) / len(graph.nodes()))
         
-        filename_adjacency_search = os.path.dirname(os.getcwd())+'/saved_adjacency_search_p'+str(args.p)+'/'+args.dataset+'_mas.pkl'
+        filename_adjacency_search = os.path.dirname(os.getcwd())+'/saved_adjacency_search_p'+str(args.p)+'/'+args.dataset+'_tas.pkl'
         if not os.path.exists('saved_adjacency_search_p'+str(args.p)):
             os.makedirs('saved_adjacency_search_p'+str(args.p))
-        copy_to = 'saved_adjacency_search_p'+str(args.p)+'/'+args.dataset+'_mas.pkl'
+        copy_to = 'saved_adjacency_search_p'+str(args.p)+'/'+args.dataset+'_tas.pkl'
         if os.path.exists(copy_to):
             try:
                 with open(copy_to, 'rb') as f:
@@ -131,8 +133,17 @@ for split_seed in range(20):
         if args.merge:
             auxiliary_graph = nx.compose(graph, auxiliary_graph)
         auxiliary_graph = dgl.from_networkx(auxiliary_graph)
-        adj, features = get_NAG_data(auxiliary_graph, features, args.pe_dim)
-        processed_features = utils.re_features_NAG(adj, features, 1).to(device)
+        raw_adj_sp, original_adj, features, cluster_dict = get_VCR_data(auxiliary_graph, features, args.num_structure_supernodes, normalize=args.adj_renorm)
+        unique_values, _ = torch.unique(labels, sorted=True, return_inverse=True)
+        if -1 in unique_values: 
+            num_labels = unique_values.shape[0]-1
+        else:
+            num_labels = unique_values.shape[0]
+        labelcluster_to_nodes = {value: np.array([index for index, element in enumerate(labels.tolist()) if element == value and index not in idx_test]) for value in set(labels.tolist()).difference({-1})}
+        num_labels = len(set(labels.tolist()))
+        processed_features = utils.re_features_push_structure(raw_adj_sp, original_adj, features, 1, args.num_structure_tokens, args.num_structure_supernodes, cluster_dict)  # return (N, num_structure_tokens + 1, d)
+        processed_features = utils.re_features_push_content(original_adj, processed_features, features, args.num_content_tokens, num_labels, labelcluster_to_nodes) # return (N, num_content_tokens + num_structure_tokens + 1, d)
+        processed_features = processed_features.to(device)
         labels = labels.to(device)
 
         del graph, auxiliary_graph
@@ -146,9 +157,9 @@ for split_seed in range(20):
         test_data_loader = Data.DataLoader(batch_data_test, batch_size=args.batch_size, shuffle = True)
 
         # Model configuration.
-        model = TransformerModel(1, 
+        model = TransformerModel(1 + args.num_structure_tokens + args.num_content_tokens, 
                                 n_class=labels.max().item() + 1, 
-                                input_dim=features.shape[1],
+                                input_dim=features.shape[1] + 1,
                                 n_layers=args.n_layers,
                                 num_heads=args.n_heads,
                                 hidden_dim=args.hidden_dim,

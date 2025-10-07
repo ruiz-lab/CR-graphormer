@@ -2,7 +2,7 @@ import dgl
 import torch
 import scipy.sparse as sp
 import dgl.data as DGLData
-# from ogb.nodeproppred import NodePropPredDataset
+from ogb.nodeproppred import NodePropPredDataset
 import numpy as np
 from dgl.data.utils import split_dataset
 import pickle
@@ -14,6 +14,7 @@ def get_dataset(dataset_name, train_size=0.5, val_size=0.25, split_seed=0, nclas
                  "squirrel", "actor", "cornell", "texas", "wisconsin"}
     datasets2 = {"products", "proteins", "arxiv", "papers", "mag"}
     datasets3 = {"arxiv-year"}
+    datasets4 = {"sbm"}
     sets = [datasets1, datasets2, datasets3]
     all_datasets = set().union(*sets)
     dataset_name = dataset_name.lower()
@@ -94,7 +95,7 @@ def get_dataset(dataset_name, train_size=0.5, val_size=0.25, split_seed=0, nclas
         features = torch.as_tensor(graph.ndata["feat"])
         labels = torch.as_tensor(graph.ndata["label"])
         idx_train, idx_val, idx_test = split_dataset(range(len(labels)), frac_list = [train_size, val_size, 1-train_size-val_size], shuffle=True, random_state=split_seed)
-    else:
+    elif dataset_name in datasets3:
         if dataset_name in datasets2:
             graph, labels, idx_train, idx_val, idx_test = load_ogb_dataset(dataset_name,train_size,val_size,split_seed)
         else:
@@ -129,13 +130,20 @@ def laplacian_positional_encoding(g, pos_enc_dim):
     lap_pos_enc = torch.from_numpy(EigVec[:,1:pos_enc_dim+1]).float() 
     return lap_pos_enc
 
-def get_VCR_data(graph, features, normalize=False):
+def get_VCR_data(graph, features, num_supernodes, normalize=False):
     adj = graph.adj()
     # adj from sparse tensor to sparse matrix.
     raw_adj_sp = sp.coo_matrix((adj.coalesce().val, (adj.coalesce().indices()[0], adj.coalesce().indices()[1])), shape=adj.shape)
     graph = dgl.to_bidirected(graph)
+    clusters_dict = dgl.metis_partition(g=graph,
+                                        k=num_supernodes,
+                                        extra_cached_hops=0,
+                                        reshuffle=False,
+                                        balance_ntypes=None,
+                                        balance_edges=False,
+                                        mode='k-way')
     features = features.double()
-    return raw_adj_sp, adj, features
+    return raw_adj_sp, adj, features, clusters_dict
 
 def load_ogb_dataset(name, train_size=0.5, val_size=0.25, split_seed=0):
     ogb_dataset = NodePropPredDataset(name="ogbn-"+name)
@@ -154,7 +162,7 @@ def load_arxiv_year_dataset(nclass=5, train_size=0.5, val_size=0.25, split_seed=
 
 def rand_train_test_idx(name, label, train_prop=.5, valid_prop=.25, split_seed=0):
     """ Randomly splits data into train/valid/test splits. """
-    ignore_negative = False if name == 'proteins' else True
+    ignore_negative = False
     if ignore_negative:
         labeled_nodes = torch.where(label != -1)[0]
     else:
@@ -167,10 +175,7 @@ def rand_train_test_idx(name, label, train_prop=.5, valid_prop=.25, split_seed=0
     train_indices = perm[:train_num]
     val_indices = perm[train_num:train_num + valid_num]
     test_indices = perm[train_num + valid_num:]
-    train_idx = labeled_nodes[train_indices]
-    val_idx = labeled_nodes[val_indices]
-    test_idx = labeled_nodes[test_indices]
-    return train_idx, val_idx, test_idx
+    return train_indices, val_indices, test_indices
 
 def even_quantile_labels(vals, nclasses, verbose=True):
     """ Partitions vals into nclasses by a quantile-based split,
