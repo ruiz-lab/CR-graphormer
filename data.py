@@ -111,7 +111,25 @@ def get_dataset(dataset_name, train_size=0.5, val_size=0.25, split_seed=0, nclas
         graph = dgl.from_scipy(adj_matrix)
     return graph, features, labels, idx_train, idx_val, idx_test
 
-def get_NAG_data(graph, features, pe_dim):
+def get_NAG_data(graph, features, pe_dim, edge_weights=None):
+    if edge_weights ==  None:
+        adj = graph.adj()
+    else:
+        row, col = graph.edges()
+        row = row.cpu().numpy()
+        col = col.cpu().numpy()
+        adj = sp.coo_matrix((edge_weights, (row, col)), shape=(graph.num_nodes(), graph.num_nodes()))
+        adj = dgl.from_scipy(adj, eweight_name='w')
+        adj.row = torch.tensor(row, dtype=torch.long)
+        adj.col = torch.tensor(col, dtype=torch.long)
+        adj.val = torch.tensor(edge_weights, dtype=torch.long)
+        adj.shape = (graph.num_nodes(), graph.num_nodes())
+    graph = dgl.to_bidirected(graph)
+    lpe = laplacian_positional_encoding(graph, pe_dim)
+    features = torch.cat((features, lpe), dim=1)
+    return adj, features
+
+def get_NAG_data_weighted(graph, features, pe_dim):
     adj = graph.adj()
     graph = dgl.to_bidirected(graph)
     lpe = laplacian_positional_encoding(graph, pe_dim)

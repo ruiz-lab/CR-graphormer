@@ -27,7 +27,7 @@ class TransformerModel(nn.Module):
         hops,
         n_class,
         input_dim, 
-        n_layers=6,
+        n_layers=2,
         num_heads=8,
         hidden_dim=64,
         dropout_rate=0.0,

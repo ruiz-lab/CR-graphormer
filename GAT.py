@@ -1,26 +1,18 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch_geometric.nn import GATConv
-
-class GAT(torch.nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dim=512, heads=8, dropout=0.1):
-        super(GAT, self).__init__()
-        # First GAT layer (multi-head attention)
-        self.gat1 = GATConv(in_dim, hidden_dim, heads=heads, dropout=dropout)
-        # Second GAT layer (averaging heads)
-        self.gat2 = GATConv(hidden_dim * heads, out_dim, heads=1, concat=False, dropout=dropout)
+class GAT(nn.Module):
+    def __init__(self, in_dim, out_dim, hidden_dim=512, num_layers=2, heads=8, dropout=0.1, concat=True):
+        super().__init__()
         self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(GATConv(in_dim, hidden_dim, heads=heads, concat=concat, dropout=dropout))
+        hidden_out_dim = hidden_dim * heads if concat else hidden_dim
+        for _ in range(num_layers - 2):
+            self.convs.append(GATConv(hidden_out_dim, hidden_dim, heads=heads, concat=concat, dropout=dropout))
+        self.convs.append(GATConv(hidden_out_dim, out_dim, heads=1, concat=False, dropout=dropout))
 
     def forward(self, x, edge_index):
-        # First layer
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.gat1(x, edge_index)
-        x = F.elu(x)
-
-        # Second layer
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.gat2(x, edge_index)
-
-        # Log softmax -> compatible with F.nll_loss
+        for conv in self.convs[:-1]:
+            x = conv(x, edge_index)
+            x = F.elu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.convs[-1](x, edge_index)
         return F.log_softmax(x, dim=1)

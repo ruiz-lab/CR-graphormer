@@ -1,4 +1,4 @@
-from data import get_dataset, rand_train_test_idx, get_NAG_data
+from data import get_dataset, rand_train_test_idx
 import time
 import utils
 import random
@@ -6,14 +6,15 @@ import argparse
 import numpy as np
 import torch
 import torch.nn.functional as F
-from model import TransformerModel
+from Gophormer import Gophormer
 from lr import PolynomialDecayLR
 import torch.utils.data as Data
 import os
 import pickle
 import dgl
+import networkx as nx
+from torch_geometric.utils import from_networkx
 
-# Training settings.
 def parse_args():
     '''
     Generate a parameters parser.
@@ -28,13 +29,10 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=0, help='Random seed.')
 
     # Model parameters.
-    parser.add_argument('--hops', type=int, default=3, help='Hops of neighbors to be calculated.')
-    parser.add_argument('--pe_dim', type=int, default=3, help='Position embedding size.')
     parser.add_argument('--hidden_dim', type=int, default=512, help='Hidden layer size.')
-    parser.add_argument('--n_layers', type=int, default=2, help='Number of transformer layers.')
-    parser.add_argument('--n_heads', type=int, default=8, help='Number of transformer heads.')
+    parser.add_argument('--n_layers', type=int, default=2, help='Number of layers.')
+    parser.add_argument('--n_heads', type=int, default=8, help='Number of heads.')
     parser.add_argument('--dropout', type=float, default=0.1, help='Dropout.')
-    parser.add_argument('--attention_dropout', type=float, default=0.1, help='Dropout in the attention layer.')
     # parser.add_argument('--split_seed', type=int, default=0, help='Split seed.')
 
     # Training parameters.
@@ -54,7 +52,7 @@ def parse_args():
 args = parse_args()
 print(args)
 
-method = "NAG"
+method = "Gophormer"
 method = method.lower()
 
 for split_seed in range(20):
@@ -85,35 +83,29 @@ for split_seed in range(20):
                 with open("/home/myl/notebooks/graphormer/cascade_rewired1/correct/synthesized/graph_data.pkl", 'rb') as f:
                     graphs, all_labels, all_features = pickle.load(f)
                 i = int(args.dataset[11:])
-                graph = dgl.from_networkx(graphs[i])
-                features = torch.tensor(all_features[i][:len(graph.nodes())], dtype=torch.float32)
-                labels = torch.as_tensor(all_labels[i], dtype=torch.long)
+                graph = graphs[i]
+                features = torch.tensor(all_features[i][:len(graph.nodes())], dtype=torch.float32).to(device)
+                labels = torch.as_tensor(all_labels[i], dtype=torch.long).to(device)
                 idx_train, idx_val, idx_test = rand_train_test_idx("synthesized", labels, split_seed=split_seed)
+                data = from_networkx(graph)
+                edge_index = data.edge_index.to(device)
             else:
                 graph, features, labels, idx_train, idx_val, idx_test = get_dataset(args.dataset, args.train_size, args.val_size, split_seed)
-            adj, features = get_NAG_data(graph, features, args.pe_dim)
-            processed_features = utils.re_features_NAG(adj, features, args.hops).to(device)
-            labels = labels.to(device)
+                graph = dgl.to_networkx(graph).to_undirected()
+                data = from_networkx(graph)
+                edge_index = data.edge_index.to(device)
+                features = features.float().to(device)
+                labels = labels.to(device)
 
             del graph
 
-            batch_data_train = Data.TensorDataset(processed_features[idx_train], labels[idx_train])
-            batch_data_val = Data.TensorDataset(processed_features[idx_val], labels[idx_val])
-            batch_data_test = Data.TensorDataset(processed_features[idx_test], labels[idx_test])
-
-            train_data_loader = Data.DataLoader(batch_data_train, batch_size=args.batch_size, shuffle = True)
-            val_data_loader = Data.DataLoader(batch_data_val, batch_size=args.batch_size, shuffle = True)
-            test_data_loader = Data.DataLoader(batch_data_test, batch_size=args.batch_size, shuffle = True)
-
             # Model configuration.
-            model = TransformerModel(args.hops, 
-                                    n_class=labels.max().item() + 1, 
-                                    input_dim=features.shape[1],
-                                    hidden_dim=args.hidden_dim,
-                                    n_layers=args.n_layers,
-                                    num_heads=args.n_heads,
-                                    dropout_rate=args.dropout,
-                                    attention_dropout_rate=args.attention_dropout).to(device)
+            model = Gophormer(in_dim=features.shape[1],
+                            out_dim=labels.max().item() + 1,
+                            hidden_dim=args.hidden_dim,
+                            num_layers=args.n_layers,
+                            heads=args.n_heads,
+                            dropout=args.dropout).to(device)
             print(model)
             print('Total parameters:', sum(p.numel() for p in model.parameters()))
 
@@ -127,56 +119,36 @@ for split_seed in range(20):
 
             def train_valid_epoch(epoch,dictionary):
                 model.train()
-                loss_train_b = 0
-                acc_train_b = 0
-                for _, item in enumerate(train_data_loader):
-                    nodes_features = item[0].to(device)
-                    labels = item[1].to(device)
-                    optimizer.zero_grad()
-                    output = model(nodes_features)
-                    loss_train = F.nll_loss(output, labels)
-                    loss_train.backward()
-                    optimizer.step()
-                    lr_scheduler.step()
-                    loss_train_b += loss_train.item()
-                    acc_train = utils.accuracy_batch(output, labels)
-                    acc_train_b += acc_train.item()
-                
-                model.eval()
-                loss_val = 0
-                acc_val = 0
-                for _, item in enumerate(val_data_loader):
-                    nodes_features = item[0].to(device)
-                    labels = item[1].to(device)
-                    output = model(nodes_features)
-                    loss_val += F.nll_loss(output, labels).item()
-                    acc_val += utils.accuracy_batch(output, labels).item()
+                optimizer.zero_grad()
+                output = model(features,edge_index)
+                loss_train = F.nll_loss(output[idx_train], labels[idx_train])
+                loss_train.backward()
+                optimizer.step()
+                lr_scheduler.step()
+                acc_train = utils.accuracy_batch(output[idx_train], labels[idx_train]).item()
+                loss_val = F.nll_loss(output[idx_val], labels[idx_val]).item()
+                acc_val = utils.accuracy_batch(output[idx_val], labels[idx_val]).item()
 
-                loss_train_b = loss_train_b/len(idx_train)
-                acc_train_b = acc_train_b/len(idx_train)
+                loss_train_val = loss_train.item()/len(idx_train)
+                acc_train = acc_train/len(idx_train)
                 loss_val = loss_val/len(idx_val)
                 acc_val = acc_val/len(idx_val)
                 print('Epoch: {:04d}'.format(epoch+1),
-                    'Training Loss: {:.4f}'.format(loss_train_b),
-                    'Training Accuracy: {:.4f}'.format(acc_train_b),
+                    'Training Loss: {:.4f}'.format(loss_train_val),
+                    'Training Accuracy: {:.4f}'.format(acc_train),
                     'Validation Loss: {:.4f}'.format(loss_val),
                     'Validation Accuracy: {:.4f}'.format(acc_val))
-                dictionary['training_results'][0].append(loss_train_b)
-                dictionary['training_results'][1].append(acc_train_b)
+                dictionary['training_results'][0].append(loss_train_val)
+                dictionary['training_results'][1].append(acc_train)
                 dictionary['training_results'][2].append(loss_val)
                 dictionary['training_results'][3].append(acc_val)
                 return loss_val, acc_val
 
             def test(dictionary):
-                loss_test = 0
-                acc_test = 0
-                for _, item in enumerate(test_data_loader):
-                    nodes_features = item[0].to(device)
-                    labels = item[1].to(device)
-                    model.eval()
-                    output = model(nodes_features)
-                    loss_test += F.nll_loss(output, labels).item()
-                    acc_test += utils.accuracy_batch(output, labels).item()
+                model.eval()
+                output = model(features,edge_index)
+                loss_test = F.nll_loss(output[idx_test], labels[idx_test]).item()
+                acc_test = utils.accuracy_batch(output[idx_test], labels[idx_test]).item()
                 loss_test = loss_test/len(idx_test)
                 acc_test = acc_test/len(idx_test)
                 print('Test Loss: {:.4f}'.format(loss_test))
@@ -225,3 +197,4 @@ for split_seed in range(20):
 
     except:
         pass
+

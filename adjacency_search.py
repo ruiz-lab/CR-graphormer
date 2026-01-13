@@ -1,11 +1,16 @@
+import scipy.sparse as sp
+import torch
+import dgl
 import numpy as np
 from tqdm import tqdm
 import random
 from typing import List, Union, Tuple
+import numba
 from scipy.sparse import csr_matrix, coo_matrix
 from torch_geometric.utils import coalesce
 import random
 import time
+import dgl
 import networkx as nx
 
 class MAS:
@@ -86,13 +91,13 @@ class TAS:
                  p = 1,
                  num_start_nodes=5,
                  num_permutations=5,
-                 threshold=5) -> None:
+                 threshold_list=5) -> None:
         self.g = g
         self.l = l
         self.p = p
         self.num_start_nodes = num_start_nodes
         self.num_permutations = num_permutations
-        self.threshold = threshold
+        self.threshold_list = threshold_list
         self.num_nodes = len(g.nodes())
         self.ordered_neighbors = {v: None for v in g.nodes()}
         self.runtime = None
@@ -107,7 +112,7 @@ class TAS:
             len_n = len(neighbours)
             counter = {i: 0 for i in range(self.num_nodes)}
             if len_n > 0:
-                for t in range(1,self.threshold+1):
+                for t in self.threshold_list:
                     for p in range(self.num_permutations):
                         random.shuffle(neighbours)
                         for i in range(0, len_n, self.num_start_nodes):
@@ -192,7 +197,7 @@ class PPR:
 
 ############
 
-def update_score2(AS_object):
+def globally_normalize(AS_object):
     dictionary = {}
     max_value = 0
     for v in AS_object.g.nodes():
@@ -201,7 +206,7 @@ def update_score2(AS_object):
         dictionary[v] = {key: value/max_value if max_value>0 else 0 for key, value in AS_object.ordered_neighbors[v].items()}
     AS_object.update_dictionary(dictionary)
 
-def update_score3(AS_object):
+def locally_normalize(AS_object):
     dictionary = {}
     for v in AS_object.g.nodes():
         max_value = max(AS_object.ordered_neighbors[v].values())
@@ -220,6 +225,14 @@ def get_weights(AS_object,auxiliary_graph):
     for v in AS_object.g.nodes():
         weights[v] = dict(sorted(weights[v].items(), key=lambda item: item[1], reverse=True))
     return weights
+
+def extract_edge_weights(edge_index, weights):
+    row, col = edge_index
+    edge_weight_list = []
+    for u, v in zip(row.tolist(), col.tolist()):
+        w = weights[u][v]
+        edge_weight_list.append(w)
+    return torch.tensor(edge_weight_list, dtype=torch.float)
 
 def get_auxiliary_graph(AS_object, k):
     G_nx = nx.DiGraph()

@@ -7,7 +7,7 @@ from torch.nn import LayerNorm
 class GlobalTransformer(nn.Module):
     def __init__(self, dim, heads=8, dropout=0.1):
         super().__init__()
-        assert dim % heads == 0, "hidden_dim must be divisible by num_heads"
+        assert dim % heads == 0, "hidden_dim must be divisible by heads"
         self.heads = heads
         self.d_head = dim // heads
         self.scale = self.d_head ** -0.5
@@ -46,12 +46,12 @@ class GraphGPSLayer(nn.Module):
         self.norm2 = LayerNorm(hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_weights=None):
         # Local message passing (residual + norm)
         res = x
         # Ensure edge_index is safe: add self-loops and clip indices
         num_nodes = x.size(0)
-        x = self.local_gnn(x, edge_index)
+        x = self.local_gnn(x, edge_index, edge_weights)
         x = self.norm1(x + res)
 
         # Global transformer (residual + norm)
@@ -63,7 +63,7 @@ class GraphGPSLayer(nn.Module):
 
 
 class GraphGPS(nn.Module):
-    def __init__(self, in_dim, out_dim, hidden_dim=512, num_layers=1, heads=8, dropout=0.1):
+    def __init__(self, in_dim, out_dim, hidden_dim=512, num_layers=2, heads=8, dropout=0.1):
         super().__init__()
         self.embedding = nn.Linear(in_dim, hidden_dim)
         self.layers = nn.ModuleList([
@@ -73,10 +73,10 @@ class GraphGPS(nn.Module):
         self.output = nn.Linear(hidden_dim, out_dim)
         self.dropout = dropout
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_weights=None):
         x = self.embedding(x)
         for layer in self.layers:
-            x = layer(x, edge_index)
+            x = layer(x, edge_index, edge_weights)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.output(x)
         return F.log_softmax(x, dim=1)  # for F.nll_loss

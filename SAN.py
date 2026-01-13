@@ -1,66 +1,3 @@
-# import torch
-# import torch.nn as nn
-# import torch.nn.functional as F
-
-
-# class SANLayer(nn.Module):
-#     """One SAN layer: Multi-head self-attention + FFN"""
-
-#     def __init__(self, dim, heads=8, dropout=0.1):
-#         super().__init__()
-#         self.attn = nn.MultiheadAttention(
-#             embed_dim=dim,
-#             num_heads=heads,
-#             dropout=dropout,
-#             batch_first=True
-#         )
-#         self.ffn = nn.Sequential(
-#             nn.Linear(dim, 2 * dim),
-#             nn.ReLU(),
-#             nn.Dropout(dropout),
-#             nn.Linear(2 * dim, dim),
-#         )
-#         self.norm1 = nn.LayerNorm(dim)
-#         self.norm2 = nn.LayerNorm(dim)
-#         self.dropout = nn.Dropout(dropout)
-
-#     def forward(self, x):
-#         # Multi-head self-attention
-#         h, _ = self.attn(x, x, x)
-#         x = self.norm1(x + self.dropout(h))
-
-#         # Feed-forward network
-#         h = self.ffn(x)
-#         x = self.norm2(x + self.dropout(h))
-
-#         return x
-
-
-# class SAN(nn.Module):
-#     def __init__(self, in_dim, out_dim, hidden_dim=512, num_layers=1, heads=8, dropout=0.1):
-#         super().__init__()
-#         self.embedding = nn.Linear(in_dim, hidden_dim)
-#         self.layers = nn.ModuleList([
-#             SANLayer(hidden_dim, heads=heads, dropout=dropout)
-#             for _ in range(num_layers)
-#         ])
-#         self.classifier = nn.Linear(hidden_dim, out_dim)
-#         self.dropout = dropout
-
-#     def forward(self, x, edge_index=None):
-#         # Embed node features
-#         x = self.embedding(x)
-#         x = x.unsqueeze(0)  # [1, N, F] for MultiheadAttention (treat graph as one batch)
-
-#         for layer in self.layers:
-#             x = layer(x)
-
-#         x = x.squeeze(0)  # back to [N, F]
-#         x = F.dropout(x, p=self.dropout, training=self.training)
-#         x = self.classifier(x)
-
-#         return F.log_softmax(x, dim=1)  # compatible with F.nll_loss
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -94,7 +31,7 @@ class SANLayer(nn.Module):
 
 class SAN(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim=512,
-                 num_layers=1, heads=8, dropout=0.1):
+                 num_layers=2, heads=8, dropout=0.1):
         super().__init__()
         self.embedding = nn.Linear(in_dim, hidden_dim)
         self.layers = nn.ModuleList([

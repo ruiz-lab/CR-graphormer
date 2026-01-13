@@ -18,7 +18,7 @@ ogb
 argparse
 typing-extensions
 
-# Project-specific modules (if local)
+# Project-specific modules (local)
 # data
 # model
 # lr
