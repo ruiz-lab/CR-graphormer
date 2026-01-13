@@ -15,6 +15,7 @@ import dgl
 import networkx as nx
 from torch_geometric.utils import from_networkx
 from data import laplacian_positional_encoding
+from adjacency_search import get_auxiliary_graph, get_weights, extract_edge_weights, globally_normalize, locally_normalize
 
 def parse_args():
     '''
