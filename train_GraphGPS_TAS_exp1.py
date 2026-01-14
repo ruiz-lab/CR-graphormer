@@ -130,9 +130,9 @@ for split_seed in range(20):
                         try:
                             with open(filename_adjacency_search, 'rb') as f:
                                 AS_object = pickle.load(f)
-                            if 'global' in os.getcwd():
+                            if args.normalization == "global":
                                 globally_normalize(AS_object)
-                            elif 'local' in os.getcwd():
+                            elif args.normalization == "local":
                                 locally_normalize(AS_object)
                             with open(copy_to, 'wb') as f:
                                 pickle.dump(AS_object, f)
@@ -142,9 +142,9 @@ for split_seed in range(20):
                     try:
                         with open(filename_adjacency_search, 'rb') as f:
                             AS_object = pickle.load(f)
-                        if 'global' in os.getcwd():
+                        if args.normalization == "global":
                             globally_normalize(AS_object)
-                        elif 'local' in os.getcwd():
+                        elif args.normalization == "local":
                             locally_normalize(AS_object)
                         with open(copy_to, 'wb') as f:
                             pickle.dump(AS_object, f)
