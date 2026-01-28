@@ -129,13 +129,6 @@ def get_NAG_data(graph, features, pe_dim, edge_weights=None):
     features = torch.cat((features, lpe), dim=1)
     return adj, features
 
-def get_NAG_data_weighted(graph, features, pe_dim):
-    adj = graph.adj()
-    graph = dgl.to_bidirected(graph)
-    lpe = laplacian_positional_encoding(graph, pe_dim)
-    features = torch.cat((features, lpe), dim=1)
-    return adj, features
-
 def laplacian_positional_encoding(g, pos_enc_dim):
     """Graph positional encoding v/ Laplacian eigenvectors."""
     # Laplacian.
@@ -148,10 +141,17 @@ def laplacian_positional_encoding(g, pos_enc_dim):
     lap_pos_enc = torch.from_numpy(EigVec[:,1:pos_enc_dim+1]).float() 
     return lap_pos_enc
 
-def get_VCR_data(graph, features, num_supernodes, normalize=False):
-    adj = graph.adj()
-    # adj from sparse tensor to sparse matrix.
-    raw_adj_sp = sp.coo_matrix((adj.coalesce().val, (adj.coalesce().indices()[0], adj.coalesce().indices()[1])), shape=adj.shape)
+def get_VCR_data(graph, features, num_supernodes, normalize=False, edge_weights=None, row=None, col=None):
+    if edge_weights == None:
+        adj = graph.adj()
+        raw_adj_sp = sp.coo_matrix((adj.coalesce().val, (adj.coalesce().indices()[0], adj.coalesce().indices()[1])), shape=adj.shape)
+    else:
+        raw_adj_sp = sp.coo_matrix((edge_weights, (row, col)), shape=(graph.num_nodes(), graph.num_nodes()))
+        adj = dgl.from_scipy(raw_adj_sp, eweight_name='w')
+        adj.row = torch.tensor(row, dtype=torch.long)
+        adj.col = torch.tensor(col, dtype=torch.long)
+        adj.val = torch.tensor(edge_weights, dtype=torch.long)
+        adj.shape = (graph.num_nodes(), graph.num_nodes())
     graph = dgl.to_bidirected(graph)
     clusters_dict = dgl.metis_partition(g=graph,
                                         k=num_supernodes,
