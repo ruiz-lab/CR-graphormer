@@ -118,6 +118,8 @@ We refer to **cascade models** as models that take the auxiliary graph \(G'\), a
 - `train_GraphGPS_TAS_exp1.py`: Training script for the GraphGPS-TAS cascade model.
 - `train_NAG_MAS_exp1.py`: Training script for the NAG-MAS cascade model.
 - `train_NAG_TAS_exp1.py`: Training script for the NAG-TAS cascade model.
+- `train_VCR_MAS_exp1.py`: Training script for the VCR-MAS cascade model.
+- `train_VCR_TAS_exp1.py`: Training script for the VCR-TAS cascade model.
 - `train_CR_MAS_exp1.py`: Training script for the CR-MAS cascade model.
 - `train_CR_TAS_exp1.py`: Training script for the CR-TAS cascade model.
 
@@ -138,8 +140,6 @@ These models take only the auxiliary graph \(G'\) as input, following the standa
 - `train_SAN_TAS_exp1.py`: Training script for SAN with TAS auxiliary graph.
 - `train_Exphormer_MAS_exp1.py`: Training script for Exphormer with MAS auxiliary graph.
 - `train_Exphormer_TAS_exp1.py`: Training script for Exphormer with TAS auxiliary graph.
-- `train_VCR_MAS_exp1.py`: Training script for VCR-Graphormer with MAS auxiliary graph.
-- `train_VCR_TAS_exp1.py`: Training script for VCR-Graphormer with TAS auxiliary graph.
 
 ### Standard Baseline Models
 These models operate on the **original input graph** without using auxiliary graphs.
