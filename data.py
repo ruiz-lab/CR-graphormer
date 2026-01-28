@@ -153,13 +153,16 @@ def get_VCR_data(graph, features, num_supernodes, normalize=False, edge_weights=
         adj.val = torch.tensor(edge_weights, dtype=torch.long)
         adj.shape = (graph.num_nodes(), graph.num_nodes())
     graph = dgl.to_bidirected(graph)
-    clusters_dict = dgl.metis_partition(g=graph,
-                                        k=num_supernodes,
-                                        extra_cached_hops=0,
-                                        reshuffle=False,
-                                        balance_ntypes=None,
-                                        balance_edges=False,
-                                        mode='k-way')
+    if num_supernodes > 0:
+        clusters_dict = dgl.metis_partition(g=graph,
+                                            k=num_supernodes,
+                                            extra_cached_hops=0,
+                                            reshuffle=False,
+                                            balance_ntypes=None,
+                                            balance_edges=False,
+                                            mode='k-way')
+    else:
+        clusters_dict = None
     features = features.double()
     return raw_adj_sp, adj, features, clusters_dict
 

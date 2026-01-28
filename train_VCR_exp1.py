@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument('--adj_renorm', default=False, help='Whether needs to normalize input adjacency.')
     
     # Model parameters.
-    parser.add_argument('--hops', type=int, default=3, help='Hops of neighbors to be calculated.')
+    parser.add_argument('--hops', type=int, default=1, help='Hops of neighbors to be calculated.')
     parser.add_argument('--num_structure_supernodes', type=int, default=20, help='Number of supernodes going to be added to the input graph.')
     parser.add_argument('--num_structure_tokens', type=int, default=10, help='Number of structure-aware virtually connected neighbors.')
     parser.add_argument('--num_content_tokens', type=int, default=10, help='Number of content-aware virtually connected neighbors.')
@@ -100,8 +100,18 @@ try:
         labelcluster_to_nodes = {value: np.array([index for index, element in enumerate(labels.tolist()) if element == value and index not in idx_test]) for value in set(labels.tolist()).difference({-1})}
         num_labels = len(set(labels.tolist()))
         processed_features = utils.re_features_push_structure(raw_adj_sp, original_adj, features, args.hops, args.num_structure_tokens, args.num_structure_supernodes, cluster_dict)  # return (N, num_structure_tokens + 1, d)
-        processed_features = utils.re_features_push_content(original_adj, processed_features, features, args.num_content_tokens, num_labels, labelcluster_to_nodes) # return (N, num_content_tokens + num_structure_tokens + 1, d)
-        processed_features = processed_features.to(device)
+        processed_features = utils.re_features_push_content(original_adj, processed_features, features, args.num_content_tokens, num_labels, labelcluster_to_nodes).to(device) # return (N, num_content_tokens + num_structure_tokens + 1, d)
+        if not torch.isfinite(processed_features).all():
+            processed_features = torch.where(
+                torch.isposinf(processed_features),
+                torch.full_like(processed_features, 1e8),
+                processed_features
+            )
+            processed_features = torch.where(
+                torch.isneginf(processed_features),
+                torch.full_like(processed_features, -1e8),
+                processed_features
+            )
         labels = labels.to(device)
 
         del graph
@@ -139,10 +149,10 @@ try:
             loss_train_b = 0
             acc_train_b = 0
             for _, item in enumerate(train_data_loader):
-                nodes_features = item[0].to(device)
+                node_features = item[0].to(device)
                 labels = item[1].to(device)
                 optimizer.zero_grad()
-                output = model(nodes_features)
+                output = model(node_features)
                 loss_train = F.nll_loss(output, labels)
                 loss_train.backward()
                 optimizer.step()
@@ -155,9 +165,9 @@ try:
             loss_val = 0
             acc_val = 0
             for _, item in enumerate(val_data_loader):
-                nodes_features = item[0].to(device)
+                node_features = item[0].to(device)
                 labels = item[1].to(device)
-                output = model(nodes_features)
+                output = model(node_features)
                 loss_val += F.nll_loss(output, labels).item()
                 acc_val += utils.accuracy_batch(output, labels).item()
 
@@ -180,10 +190,10 @@ try:
             loss_test = 0
             acc_test = 0
             for _, item in enumerate(test_data_loader):
-                nodes_features = item[0].to(device)
+                node_features = item[0].to(device)
                 labels = item[1].to(device)
                 model.eval()
-                output = model(nodes_features)
+                output = model(node_features)
                 loss_test += F.nll_loss(output, labels).item()
                 acc_test += utils.accuracy_batch(output, labels).item()
             loss_test = loss_test/len(idx_test)
